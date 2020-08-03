@@ -1,0 +1,78 @@
+- hosts: localhost
+  connection: local
+
+  vars:
+    nodejs_npm_global_packages:
+      - name: yarn
+      # - name: pm2
+      # - name: strapi
+      #   version: alpha
+    # mysql_databases: 
+    #   - name: strapi
+    # mysql_users:
+    #   - name: strapi
+    #     host: 127.0.0.1
+    #     password: strapi
+    #     priv: strapi.*:ALL
+
+  tasks:
+    
+    - name: Check the version of CentOS
+      command: hostnamectl
+      register: os_check
+      ignore_errors: yes
+
+    - name: Install Role NodeJS
+      local_action: command ansible-galaxy install -f geerlingguy.nodejs 
+
+    - name: Install Role MySQL
+      local_action: command ansible-galaxy install -f geerlingguy.mysql
+
+    - name: Check if NodeJS is already installed
+      stat: path=/usr/bin/node
+      register: node_exists
+
+    - name: Applying role NodeJS
+      command: mv ~/.ansible/roles/geerlingguy.nodejs ~/.ansible/roles/pwslab.nodejs
+      when: not node_exists.stat.exists
+      ignore_errors: yes
+
+    - name: Check if MYSQL is already installed
+      stat: path=/usr/bin/mysql
+      register: mysql_exists
+
+    - name: Applying role MYSQL
+      command: mv ~/.ansible/roles/geerlingguy.mysql ~/.ansible/roles/pwslab.mysql
+      when: not mysql_exists.stat.exists
+      ignore_errors: yes
+
+    - name: Installing MYSQL
+      include_role:
+          name: pwslab.mysql
+      when: not mysql_exists.stat.exists
+      
+    - name: Installing NodeJS
+      include_role:
+        name: pwslab.nodejs
+      when: not node_exists.stat.exists
+
+    - name: Install NPM Global required packages
+      shell: npm install {{ item }} -g
+      loop:
+        - strapi@alpha
+        - pm2
+
+    - name: Create schema for strapi
+      shell: mysql -u root -p'root' -e "CREATE SCHEMA strapi DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;"
+
+    - name: Create DB User strapi
+      shell: mysql -u root -p'root' -e "CREATE USER 'strapi'@'localhost' IDENTIFIED BY 'strapi';"
+
+    - name: Grant Privs to User strapi
+      shell: mysql -u root -p'root' -e "GRANT ALL PRIVILEGES ON strapi.* TO 'strapi'@'localhost';"
+      
+    - name: Alter Privs to User strapi
+      shell: mysql -u root -p'root' -e "ALTER USER strapi@'localhost' IDENTIFIED WITH mysql_native_password BY 'strapi';"
+      when:
+        - os_check.stdout | regex_search("Ubuntu 20")
+    
